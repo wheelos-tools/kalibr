@@ -1,5 +1,7 @@
 # Extrinsic Calibration — 5 RTSP Cameras (Kalibr)
 
+> 中文版本: [`EXTRINSIC_CALIBRATION_GUIDE_zh.md`](EXTRINSIC_CALIBRATION_GUIDE_zh.md)
+
 Calibrate the extrinsics of the 5-camera surround rig
 (chain `68 → 66 → 64 → 65 → 67`, each camera sharing ~30 % FOV with its
 neighbour) with Kalibr — **run entirely on your local machine** — in four steps:
