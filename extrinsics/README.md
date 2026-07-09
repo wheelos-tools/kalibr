@@ -4,7 +4,9 @@ Reusable method to calibrate the extrinsics of a 5-camera surround rig
 (chain `68 → 66 → 64 → 65 → 67`, ~30 % adjacent overlap) with Kalibr, run
 locally — from AprilGrid pair videos to exported calibration YAML.
 
-➡️ **Full procedure: [`docs/EXTRINSIC_CALIBRATION_GUIDE.md`](docs/EXTRINSIC_CALIBRATION_GUIDE.md)** · 中文：[`docs/EXTRINSIC_CALIBRATION_GUIDE_zh.md`](docs/EXTRINSIC_CALIBRATION_GUIDE_zh.md)
+➡️ **Multi-camera procedure: [`docs/EXTRINSIC_CALIBRATION_GUIDE.md`](docs/EXTRINSIC_CALIBRATION_GUIDE.md)** · 中文：[`docs/EXTRINSIC_CALIBRATION_GUIDE_zh.md`](docs/EXTRINSIC_CALIBRATION_GUIDE_zh.md)
+
+➡️ **Pairwise camera-to-camera (install → capture → convert → calibrate → evaluate): [`docs/CAMERA2CAMERA_CALIBRATION_GUIDE.md`](docs/CAMERA2CAMERA_CALIBRATION_GUIDE.md)** · 中文：[`docs/CAMERA2CAMERA_CALIBRATION_GUIDE_zh.md`](docs/CAMERA2CAMERA_CALIBRATION_GUIDE_zh.md)
 
 ## Layout
 
