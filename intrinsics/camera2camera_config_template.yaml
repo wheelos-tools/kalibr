@@ -1,0 +1,41 @@
+# camera2camera extrinsic calibration template.
+# Copy per camera pair and edit:
+#   - cameras.parent / child: frame_id, image_directory, intrinsics_path
+#   - output.directory
+# Image dirs must contain matching filename stems (e.g. 0001.png in both).
+# Run with: camera2camera-calibrate --config <this-file>
+
+cameras:
+  parent:
+    frame_id: camera_64        # change to your TF frame id
+    image_directory: ./pairs/64_65/parent
+    intrinsics_path: ./intrinsics_cam64.yaml
+  child:
+    frame_id: camera_65        # change to your TF frame id
+    image_directory: ./pairs/64_65/child
+    intrinsics_path: ./intrinsics_cam65.yaml
+
+target:
+  type: checkerboard
+  pattern_size: [11, 8]
+  square_size_m: 0.045         # match the physical board used for intrinsic capture
+
+extraction:
+  min_bbox_area_ratio: 0.003
+  min_edge_margin_px: 16.0
+  max_pnp_reprojection_rms_px: 1.5
+
+optimization:
+  min_pairs: 8
+  loss: huber
+  f_scale: 1.0
+  max_nfev: 300
+
+metrics:
+  warning_final_rms_px: 1.0
+  warning_pair_rms_p95_px: 1.5
+  warning_holdout_rms_px: 1.5
+  warning_epipolar_p95_px: 1.0
+
+output:
+  directory: ./outputs/64_65   # change per pair

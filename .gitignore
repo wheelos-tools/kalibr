@@ -53,3 +53,36 @@ Build
 
 # vs-code
 .vscode
+
+# ============================================================
+# Calibration data & results — the METHOD (scripts + guide) is
+# tracked; per-rig recordings and outputs are NOT. Regenerate
+# them by following extrinsics/EXTRINSIC_CALIBRATION_GUIDE.md.
+# ============================================================
+# Recorded video and extracted frames
+c2c_videos/
+extrinsics/pairs/
+extrinsics/run*/
+*.mkv
+*.mp4
+*.bag
+
+# Kalibr outputs and intermediate conversions
+*-camchain.yaml
+*-results-cam.txt
+*-extrinsics.yaml
+*-comparison-report.md
+*-report-cam.pdf
+*-calib.log
+*.zip
+extrinsics/68_*/
+extrinsics/kalibr_intrinsics_cam*.yaml
+
+# Per-unit intrinsic calibration results (supply your own)
+intrinsics/intrinsics_cam*.yaml
+
+# Board printout
+april_*.pdf
+
+# Python cache
+__pycache__/

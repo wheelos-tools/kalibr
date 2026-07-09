@@ -1,0 +1,5 @@
+target_type: 'aprilgrid'   # gridtype
+tagCols: 6                 # number of apriltags in x
+tagRows: 6                 # number of apriltags in y
+tagSize: 0.088             # tag side length [m]  (8.8 cm)
+tagSpacing: 0.3            # gap / tagSize = 0.0264 / 0.088 = 0.3
