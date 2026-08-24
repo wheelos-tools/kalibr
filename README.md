@@ -1,11 +1,11 @@
-# Camera-Camera 标定（PNG 第一版）
+# Camera-Camera 标定
 
 `apollo-camera-camera` 分支保存 Apollo 版本的 Kalibr camera-camera 标定模块。
-该分支根目录可以完整复制到 Apollo 源码树中独立构建和运行，第一版只接收两组配对的
+该分支根目录可以完整复制到 Apollo 源码树中独立构建和运行，接收两组配对的
 普通 PNG 作为输入。
 
 运行所需的 Kalibr/Aslam 源码、构建兼容修改、PNG reader、默认 AprilGrid 配置均位于
-本目录的 `kalibr/` 下，不依赖目标仓库中的 `data/kalibr` 或外部 `/catkin_ws`。
+本目录的 `kalibr/` 下。
 
 ## 复制到 Apollo
 
