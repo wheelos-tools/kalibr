@@ -6,8 +6,8 @@
 30% 视场重叠）的外参 —— **全程在本地机器上运行** —— 共四步：
 
 ```
- 1. 录制 ──▶ 2. 构建图像集 ──▶ 3. 标定（本地 Docker）──▶ 4. 导出 YAML
-   成对视频     提取 + 合并         bagcreater + calibrate       opencv / apollo
+ 1. 五路录像 ──▶ 2. 构建图像集 ──▶ 3. 标定（本地 Docker）──▶ 4. 导出 YAML
+                pair整理 + 提取       bagcreater + calibrate       opencv / apollo
               → 单个 5 相机文件夹   → *-camchain.yaml
 ```
 
@@ -32,47 +32,92 @@
   （Kalibr 在标外参时仍会重新估计内参，详见[第 4 步](#第-4-步--导出-yaml)）。
 - 已安装 **Docker**，并在本地构建好 Kalibr 镜像（见第 3 步）。
 - **Python 3**，且已安装 `opencv-python`、`numpy`、`pyyaml`。
+- 录像主机还需 **PyGObject** 与 GStreamer 的 RTSP、H.264/H.265 和 Matroska 插件。
 
 ---
 
-## 第 1 步 —— 每对相邻相机录制一段视频
+## 第 1 步 —— 同时录制五路相机
 
-5 相机链路共需录制 4 对。每对的两个相机要同时开录（一起启动，使两路时钟尽量接近）。
-操作要点：
+本仓库提供独立录制器，不依赖 `video-stitch`。录制器和逐相机 GStreamer
+pipeline 在**能访问相机的宿主机**运行；Kalibr 仍按第 3 步在本地 Docker 中运行。
+先将示例配置复制为本地配置并按设备修改相机地址、RTSP 路径和编码格式：
+
+```bash
+cp cameras.example.json cameras.local.json
+```
+
+RTSP 凭据不要写入配置或提交 Git，使用环境变量提供：
+
+```bash
+export RTSP_USER='你的相机用户名'
+export RTSP_PASSWORD='你的相机密码'
+./scripts/record_5cam.sh --duration 180 --length 3600
+```
+
+录制结果位于 `recordings/<run_id>/cam<id>/`，文件名含相机 ID、IP 和分段序号；
+逐帧时钟信息保存在同目录的 `.frames.csv` sidecar 中。sidecar 目前只作记录，不参与
+Kalibr 的观测配对。默认分段时长为 3600 秒；短于此时长的采集通常每路只有一个视频段。
+录像进程会并发启动，按 Ctrl-C 或到达 `--duration` 后发送 EOS，等待 Matroska 文件收尾。
+
+如果录制结果包含多段，必须保证五路相机分段序号一致；整理脚本会在不匹配时停止并报错。
+脚本为现有两相机提取器准备四组相邻相机输入（创建指向原录像的符号链接）：
+
+```bash
+python3 scripts/prepare_video_pairs.py \
+  --recording-dir recordings/<run_id> --out pairs/video_inputs
+```
+
+## 第 2 步 —— 构建图像集
+
+五路同时录制后，处理四组相邻相机对。操作要点：
 
 - 让 AprilGrid 始终处于该对的**重叠区域**内，使**两个相机都能看到**。
 - **走走停停**：移动 → **静止保持 3–5 秒** → 再移动。正是这种静止让我们无需硬件同步。
 - 每对采集 **约 20–30 个不同位姿**，覆盖不同的**距离、倾角、位置**。
 - 避免运动模糊；让标定板在画面中保持足够大。
 
-目录结构（相机 id 由文件名中的 IP 解析得到）：
+整理后的 pair 输入目录（相机 id 由文件名中的 IP 解析得到）：
 
 ```
-c2c_videos/
-├── 66_68/  *_192.168.1.68_*.mkv  *_192.168.1.66_*.mkv
-├── 64_66/  *_192.168.1.66_*.mkv  *_192.168.1.64_*.mkv
-├── 64_65/  *_192.168.1.64_*.mkv  *_192.168.1.65_*.mkv
-└── 65_67/  *_192.168.1.65_*.mkv  *_192.168.1.67_*.mkv
+pairs/video_inputs/
+├── 66_68_seg000/  *_192.168.1.68_*.mkv  *_192.168.1.66_*.mkv
+├── 64_66_seg000/  *_192.168.1.66_*.mkv  *_192.168.1.64_*.mkv
+├── 64_65_seg000/  *_192.168.1.64_*.mkv  *_192.168.1.65_*.mkv
+└── 65_67_seg000/  *_192.168.1.65_*.mkv  *_192.168.1.67_*.mkv
 ```
 
-*（没有录制设备？可改用 `scripts/capture_sync_rtsp.py` 实时抓取同步快照 ——
-见[附录](#附录--实时快照采集)。后续流程完全一致。）*
-
----
-
-## 第 2 步 —— 构建图像集
+也可按原方式单独录制每个相机对的视频，并把 pair 目录直接交给后续提取器。
+（没有录像需求？可改用 `scripts/capture_sync_rtsp.py` 实时抓取同步快照 ——
+见[附录](#附录--实时快照采集)。后续流程完全一致。）
 
 从每对视频中**提取去重、共享时间戳**的图像对。脚本会检测每个 3–5 秒的**静止停留段**
 （用每帧的特征签名衡量低运动区间），并保留其中**最清晰**的一帧，同时给同一位姿下两个
 相机的图像打上相同的时间戳。
 
 ```bash
-python3 scripts/extract_pairs_from_video.py --videos-root ../c2c_videos --out pairs --prune-unpaired
+for pair in pairs/video_inputs/*; do
+  python3 scripts/extract_pairs_from_video.py --pair "$pair" \
+    --out pairs/extracted_parts --prune-unpaired
+done
 ```
 
-打开每个 `pairs/<pair>/review_montage.jpg`（每个位姿左右并排显示 cam A | cam B），把不好的
+打开每个 `pairs/extracted_parts/<pair>_segNNN/review_montage.jpg`（每个位姿左右并排显示 cam A | cam B），把不好的
 位姿对应的 `<ts>.png` 从**两个相机文件夹中都删除**。可调参数：`--min-still`、`--dup-thresh`、
 `--per-pose`、`--still-thresh`（或先用 `--dry-run` 调试阈值）。
+
+将同一相机对不同分段提取出的目录合并为一个 pair。单分段示例（多分段时重复添加
+`--source <pair>_segNNN <offset>`，各偏移必须足够大以避免时间戳窗口重叠）：
+
+```bash
+python3 scripts/merge_pairs.py --out pairs/66_68 \
+  --source pairs/extracted_parts/66_68_seg000 0
+python3 scripts/merge_pairs.py --out pairs/64_66 \
+  --source pairs/extracted_parts/64_66_seg000 0
+python3 scripts/merge_pairs.py --out pairs/64_65 \
+  --source pairs/extracted_parts/64_65_seg000 0
+python3 scripts/merge_pairs.py --out pairs/65_67 \
+  --source pairs/extracted_parts/65_67_seg000 0
+```
 
 把全部 4 对**合并**成一个多相机文件夹，以便做一次**联合标定**。由于各对是分开录制的，
 共享的"桥接"相机（66、64、65）会复用相同的时间戳；通过给每个来源加一个时间偏移，使每次
@@ -175,11 +220,15 @@ python3 scripts/capture_sync_rtsp.py --out pairs/run01 --interval 0.5   # 或 --
 - `scripts/extract_pairs_from_video.py` —— 视频 → 去重、共享时间戳的图像对。
 - `scripts/merge_pairs.py` —— 把多个成对文件夹合并成一个多相机文件夹（时间偏移桥接）。
 - `scripts/capture_sync_rtsp.py` —— 实时快照采集（替代方案）。
+- `scripts/record_5cam.sh`、`scripts/record_cam_synced.py` —— 五路 RTSP 分段录制及时间戳 sidecar。
+- `scripts/prepare_video_pairs.py` —— 把五路录像整理成现有提取器所需的相邻相机对目录。
 - `scripts/kalibr_to_opencv.py` —— camchain → OpenCV 内参 + 外参 YAML。
 - `scripts/extrinsics_relative.py` —— 各相机相对参考相机的 yaw/roll/pitch。
 - `scripts/compare_calib.py` —— Kalibr 内参 vs 棋盘格内参的对比。
 - `../intrinsics/intrinsics_to_camchain.py` —— 内参 → apollo `camchain_<id>.yaml`。
 - `aprilgrid_6x6.yaml` —— Kalibr 标定板定义。
 
-录制视频、提取出的图像、bag 以及 Kalibr 输出都已被 **gitignore**（属于每套设备各自的
-数据，运行本指南即可重新生成，不随仓库提交）。
+录制视频、sidecar、提取出的图像、bag 以及 Kalibr 输出都已被 **gitignore**（属于每套设备各自的
+数据，运行本指南即可重新生成，不随仓库提交）。录制依赖 Python GObject 和 GStreamer
+RTSP/H.264/H.265/Matroska 插件；录制器配置及完整参数见 `cameras.example.json`、
+`scripts/record_5cam.sh --help`。

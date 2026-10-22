@@ -62,7 +62,9 @@ Build
 # Recorded video and extracted frames
 c2c_videos/
 extrinsics/pairs/
+extrinsics/recordings/
 extrinsics/run*/
+extrinsics/cameras.local.json
 *.mkv
 *.mp4
 *.bag

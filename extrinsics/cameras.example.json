@@ -1,0 +1,49 @@
+{
+  "cameras": [
+    {
+      "id": "cam68",
+      "host": "192.168.1.68",
+      "port": 554,
+      "path": "/live",
+      "codec": "h265",
+      "username_env": "RTSP_USER",
+      "password_env": "RTSP_PASSWORD"
+    },
+    {
+      "id": "cam66",
+      "host": "192.168.1.66",
+      "port": 554,
+      "path": "/live",
+      "codec": "h265",
+      "username_env": "RTSP_USER",
+      "password_env": "RTSP_PASSWORD"
+    },
+    {
+      "id": "cam64",
+      "host": "192.168.1.64",
+      "port": 554,
+      "path": "/live",
+      "codec": "h265",
+      "username_env": "RTSP_USER",
+      "password_env": "RTSP_PASSWORD"
+    },
+    {
+      "id": "cam65",
+      "host": "192.168.1.65",
+      "port": 554,
+      "path": "/live",
+      "codec": "h265",
+      "username_env": "RTSP_USER",
+      "password_env": "RTSP_PASSWORD"
+    },
+    {
+      "id": "cam67",
+      "host": "192.168.1.67",
+      "port": 554,
+      "path": "/live",
+      "codec": "h265",
+      "username_env": "RTSP_USER",
+      "password_env": "RTSP_PASSWORD"
+    }
+  ]
+}
