@@ -7,9 +7,9 @@ Calibrate the extrinsics of the 5-camera surround rig
 neighbour) with Kalibr — **run entirely on your local machine** — in four steps:
 
 ```
- 1. record ──▶ 2. build frame set ──▶ 3. calibrate (local Docker) ──▶ 4. export YAML
-   pair         extract + merge          bagcreater + calibrate         opencv / apollo
-   videos       → one 5-cam folder       → *-camchain.yaml
+ 1. record 5 ──▶ 2. build frame set ──▶ 3. calibrate (local Docker) ──▶ 4. export YAML
+   cameras      prepare pairs + extract    bagcreater + calibrate         opencv / apollo
+                → one 5-cam folder         → *-camchain.yaml
 ```
 
 All commands below are run **from the `extrinsics/` directory**; scripts live in
@@ -31,13 +31,48 @@ make the 30 % overlap workable (partial views still count).
   (Kalibr re-estimates them anyway; see [Step 4](#step-4--export-to-yaml)).
 - **Docker**, and the Kalibr image built locally (Step 3).
 - **Python 3** with `opencv-python`, `numpy`, `pyyaml`.
+- On the recording host: **PyGObject** and GStreamer RTSP, H.264/H.265, and Matroska plugins.
 
 ---
 
-## Step 1 — Record one video per adjacent pair
+## Step 1 — Record all five cameras
 
-Four pairs for a 5-camera chain. Run both cameras of a pair at once (start them
-together so their clocks stay close). Operator protocol:
+This repo includes a standalone recorder; it does not depend on `video-stitch`.
+Run the recorder and its per-camera GStreamer pipelines on a host that can reach
+the cameras. Kalibr remains in the local Docker image (Step 3). Copy the example
+config and adjust the camera endpoints, RTSP paths, and codecs:
+
+```bash
+cp cameras.example.json cameras.local.json
+```
+
+Do not put RTSP credentials in the config or commit them. Supply them through
+environment variables:
+
+```bash
+export RTSP_USER='your-camera-user'
+export RTSP_PASSWORD='your-camera-password'
+./scripts/record_5cam.sh --duration 180 --length 3600
+```
+
+Recordings are written to `recordings/<run_id>/cam<id>/`; each filename includes
+the camera ID, IP, and segment number. Per-frame clock values are kept in a
+`.frames.csv` sidecar for reference only; the current Kalibr workflow does not
+use those timestamps for observation pairing. The default segment length is one
+hour, so a shorter run normally produces one video per camera. Ctrl-C and
+`--duration` both stop via EOS so Matroska segments can finalize.
+
+If the run has multiple segments, all five cameras must have matching segment
+numbers. Prepare the four neighboring-pair inputs (symlinks to the recordings):
+
+```bash
+python3 scripts/prepare_video_pairs.py \
+  --recording-dir recordings/<run_id> --out pairs/video_inputs
+```
+
+## Step 2 — Build the frame set
+
+The five simultaneous recordings provide the four adjacent camera pairs. Operator protocol:
 
 - Keep the AprilGrid in the pair's **overlap region**, visible to **both** cameras.
 - **Stop-and-go:** move, **hold still 3–5 s**, move. Stillness is what removes the
@@ -45,34 +80,48 @@ together so their clocks stay close). Operator protocol:
 - ~**20–30 distinct poses** per pair across varied **distance, tilt, position**.
 - Avoid motion blur; keep the board reasonably large.
 
-Layout (camera id parsed from the IP in each filename):
+Prepared pair layout (camera id parsed from the IP in each filename):
 
 ```
-c2c_videos/
-├── 66_68/  *_192.168.1.68_*.mkv  *_192.168.1.66_*.mkv
-├── 64_66/  *_192.168.1.66_*.mkv  *_192.168.1.64_*.mkv
-├── 64_65/  *_192.168.1.64_*.mkv  *_192.168.1.65_*.mkv
-└── 65_67/  *_192.168.1.65_*.mkv  *_192.168.1.67_*.mkv
+pairs/video_inputs/
+├── 66_68_seg000/  *_192.168.1.68_*.mkv  *_192.168.1.66_*.mkv
+├── 64_66_seg000/  *_192.168.1.66_*.mkv  *_192.168.1.64_*.mkv
+├── 64_65_seg000/  *_192.168.1.64_*.mkv  *_192.168.1.65_*.mkv
+└── 65_67_seg000/  *_192.168.1.65_*.mkv  *_192.168.1.67_*.mkv
 ```
 
-*(No recorder? `scripts/capture_sync_rtsp.py` grabs synced live snapshots instead —
-see [Appendix](#appendix--live-snapshot-capture). The rest of the flow is identical.)*
-
----
-
-## Step 2 — Build the frame set
+You may also record each adjacent pair separately and feed its two videos
+directly into the extraction step below. For live synchronized snapshots,
+`scripts/capture_sync_rtsp.py` remains available (see
+[Appendix](#appendix--live-snapshot-capture)).
 
 **Extract** deduped, shared-timestamp frame-pairs from every pair video. The tool
 detects each 3–5 s dwell (a low-motion run of a per-frame signature) and keeps the
 **sharpest** frame, stamping both cameras of a pose identically.
 
 ```bash
-python3 scripts/extract_pairs_from_video.py --videos-root ../c2c_videos --out pairs --prune-unpaired
+for pair in pairs/video_inputs/*; do
+  python3 scripts/extract_pairs_from_video.py --pair "$pair" \
+    --out pairs/extracted_parts --prune-unpaired
+done
 ```
 
-Open each `pairs/<pair>/review_montage.jpg` (side-by-side cam A | cam B per pose)
+Open each `pairs/extracted_parts/<pair>_segNNN/review_montage.jpg` (side-by-side cam A | cam B per pose)
 and delete any bad pose's `<ts>.png` from **both** cam folders. Knobs: `--min-still`,
 `--dup-thresh`, `--per-pose`, `--still-thresh` (or `--dry-run` to tune first).
+
+Merge the extracted segment folders belonging to each camera pair. For a
+single-segment recording:
+
+```bash
+python3 scripts/merge_pairs.py --out pairs/66_68 --source pairs/extracted_parts/66_68_seg000 0
+python3 scripts/merge_pairs.py --out pairs/64_66 --source pairs/extracted_parts/64_66_seg000 0
+python3 scripts/merge_pairs.py --out pairs/64_65 --source pairs/extracted_parts/64_65_seg000 0
+python3 scripts/merge_pairs.py --out pairs/65_67 --source pairs/extracted_parts/65_67_seg000 0
+```
+
+For multiple segments, add one `--source <pair>_segNNN <offset>` per segment;
+choose offsets so their synthetic timestamp ranges do not overlap.
 
 **Merge** all four pairs into one multi-camera folder for a single joint solve.
 Because the pairs were recorded separately, the shared "bridge" cameras (66, 64,
@@ -178,11 +227,15 @@ Output is already in the Step 3 folder layout; skip Step 2 and go to Step 3.
 - `scripts/extract_pairs_from_video.py` — videos → deduped, shared-timestamp frame-pairs.
 - `scripts/merge_pairs.py` — combine pair folders into one multi-cam folder (time-offset bridge).
 - `scripts/capture_sync_rtsp.py` — live-snapshot capture alternative.
+- `scripts/record_5cam.sh` and `scripts/record_cam_synced.py` — five-camera segmented recording with timestamp sidecars.
+- `scripts/prepare_video_pairs.py` — organize five-camera recordings into pair inputs for the existing extractor.
 - `scripts/kalibr_to_opencv.py` — camchain → OpenCV intrinsics + extrinsics YAML.
 - `scripts/extrinsics_relative.py` — per-camera yaw/roll/pitch vs a reference.
 - `scripts/compare_calib.py` — Kalibr vs chessboard intrinsics comparison.
 - `../intrinsics/intrinsics_to_camchain.py` — intrinsics → apollo `camchain_<id>.yaml`.
 - `aprilgrid_6x6.yaml` — Kalibr target definition.
 
-Recordings, extracted frames, bags, and Kalibr outputs are **gitignored** (per-rig
-data, regenerated by following this guide).
+Recordings, sidecars, extracted frames, bags, and Kalibr outputs are **gitignored**
+(per-rig data, regenerated by following this guide). The host recorder requires
+PyGObject and GStreamer RTSP, H.264/H.265, and Matroska plugins; see
+`cameras.example.json` and `scripts/record_5cam.sh --help`.
